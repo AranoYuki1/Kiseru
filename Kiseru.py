@@ -11,7 +11,7 @@ bl_info = {
 
 import bpy
 from .VertexCleaner import cleanup_all_unused_vertex, cleanup_all_vertex
-from .WeightTransfer import apply_cloth, unapply_cloth
+from .WeightTransfer import apply_cloth, unapply_cloth, find_armature
 
 class MY_PT_ui(bpy.types.Panel):  
     bl_label = "Kiseru"
@@ -64,7 +64,10 @@ class OBJECT_OT_apply_cloth(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.active_object is not None and len(bpy.context.selected_objects) > 1
+        if context.active_object is None: return False
+        if len(bpy.context.selected_objects) < 2: return False
+        if find_armature(bpy.context.active_object) is None: return False
+        return True
 
     def execute(self, context): 
         target_objs = bpy.context.selected_objects[1:]

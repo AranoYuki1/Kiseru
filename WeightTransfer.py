@@ -47,16 +47,36 @@ def transfer_weights(source_obj: bpy.types.Object, target_objs: Sequence[bpy.typ
     for target_obj in target_objs:
         target_obj.select_set(False)
 
+def apply_transforms(obj: bpy.types.Object):
+    matrix = obj.matrix_world
+    for vert in obj.data.vertices: # type: ignore
+        vert.co = matrix @ vert.co
+    obj.matrix_world = [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0 ,0, 1, 0],
+        [0, 0, 0, 1]
+    ]
+
+def find_armature(source_obj: bpy.types.Object):
+    if source_obj.parent is None: return None
+    if source_obj.parent.type == "ARMATURE": return source_obj.parent
+    return find_armature(source_obj.parent)
 
 def apply_cloth(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Object], smooth: float, clean: bool) -> bool:
     # filter target objects with mesh type
     target_objs = list(filter(lambda obj: obj.type == "MESH", target_objs))
     if source_obj.parent is None or len(target_objs) < 1: return False
     
-    armature = source_obj.parent
-    if armature.type != "ARMATURE": return False
+    armature = find_armature(source_obj)
+    if armature is None or armature.type != "ARMATURE": return False
+
+    # apply transforms of target objects
+    for target_mesh in target_objs:
+        apply_transforms(target_mesh)
     
     # add armature modifier to target meshes
+
     for target_mesh in target_objs:
         a = target_mesh.modifiers.new(name="Armature", type='ARMATURE')
         a.object = armature #type: ignore
