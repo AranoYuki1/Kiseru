@@ -1,13 +1,15 @@
 from typing import Sequence
-
+from dataclasses import dataclass
 
 import bpy
 
 from .VertexCleaner import cleanup_unused_vertex_groups, cleanup_all_vertex
 
 def unapply_cloth(obj: bpy.types.Object):
-    if "Armature" in obj.modifiers.keys():
-        obj.modifiers.remove(obj.modifiers["Armature"])
+    # remove armature modifier
+    for modifier in obj.modifiers:
+        if modifier.type == "ARMATURE":
+            obj.modifiers.remove(modifier)
 
     cleanup_all_vertex([obj])
 
@@ -58,12 +60,37 @@ def apply_transforms(obj: bpy.types.Object):
         [0, 0, 0, 1]
     ]
 
+def make_armature_parent(objs: list[bpy.types.Object], armature: bpy.types.Object):
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in objs:
+        obj.select_set(True)
+    
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.parent_set(type='ARMATURE')
+
+
 def find_armature(source_obj: bpy.types.Object):
     if source_obj.parent is None: return None
     if source_obj.parent.type == "ARMATURE": return source_obj.parent
     return find_armature(source_obj.parent)
 
-def apply_cloth(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Object], smooth: float, clean: bool) -> bool:
+def applicable_meshes(target_objs: Sequence[bpy.types.Object]) -> Sequence[bpy.types.Object]:
+    res = []
+
+    for target in target_objs:
+        if target.type != "MESH": continue
+        if find_armature(target) is not None: continue
+        res.append(target)
+
+    return res
+
+@dataclass  
+class ClothApplyOptions:
+    smooth: float
+    clean: bool
+    apply_transform: bool
+
+def apply_cloth(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Object], options: ClothApplyOptions) -> bool:
     # filter target objects with mesh type
     target_objs = list(filter(lambda obj: obj.type == "MESH", target_objs))
     if source_obj.parent is None or len(target_objs) < 1: return False
@@ -71,27 +98,29 @@ def apply_cloth(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Ob
     armature = find_armature(source_obj)
     if armature is None or armature.type != "ARMATURE": return False
 
-    # apply transforms of target objects
-    for target_mesh in target_objs:
-        apply_transforms(target_mesh)
-    
-    # add armature modifier to target meshes
+    # apply transform
+    if options.apply_transform:
+        for target_obj in target_objs:
+            apply_transforms(target_obj)
 
-    for target_mesh in target_objs:
-        a = target_mesh.modifiers.new(name="Armature", type='ARMATURE')
-        a.object = armature #type: ignore
-        target_mesh.parent = armature
+    # make every target objects to armature children
+    make_armature_parent(target_objs, armature)
     
     # transfar weight from source to target
     transfer_weights(source_obj, target_objs)
 
     for target_mesh in target_objs:
-        smooth_weight(target_mesh, smooth)
+        smooth_weight(target_mesh, options.smooth)
 
     # cleanup unused vertex groups
-    if clean:
+    if options.clean:
         for target_mesh in target_objs:
             cleanup_unused_vertex_groups(target_mesh)
+
+    # reselect target objects
+    bpy.ops.object.select_all(action='DESELECT')
+    for target_mesh in target_objs:
+        target_mesh.select_set(True)
 
     return True
         
