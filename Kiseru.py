@@ -151,4 +151,3 @@ def register():
 
 def unregister():
     del bpy.types.Scene.panel_input # type: ignore
-    bpy.app.translations.unregister(__name__)
