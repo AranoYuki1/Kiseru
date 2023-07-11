@@ -79,7 +79,6 @@ def applicable_meshes(target_objs: Sequence[bpy.types.Object]) -> Sequence[bpy.t
 
     for target in target_objs:
         if target.type != "MESH": continue
-        if find_armature(target) is not None: continue
         res.append(target)
 
     return res

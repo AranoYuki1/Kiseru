@@ -121,7 +121,7 @@ class OBJECT_OT_remove_all_ununsed_vertex_groups(bpy.types.Operator):
     def execute(self, context): 
         if len(bpy.context.selected_objects) < 1: return {'CANCELLED'}
         cleanup_all_unused_vertex(bpy.context.selected_objects)
-
+        
         return {'FINISHED'}
 
 class PanelInputsProps(bpy.types.PropertyGroup):
@@ -138,7 +138,7 @@ class PanelInputsProps(bpy.types.PropertyGroup):
         description="Auto clean vertex group",
         default=True
     )
-
+    
     apply_transform: bpy.props.BoolProperty( # type: ignore
         name=localize("Apply Transform"),
         description="Apply transform",
