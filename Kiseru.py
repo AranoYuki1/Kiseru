@@ -10,6 +10,7 @@ bl_info = {
 }
 
 import bpy
+import time
 from .VertexCleaner import cleanup_all_unused_vertex, cleanup_all_vertex
 from .WeightTransfer import apply_cloth, unapply_cloth, find_armature, ClothApplyOptions, applicable_meshes
 from .Localize import localize
@@ -27,6 +28,9 @@ class MY_PT_ui(bpy.types.Panel):
         self.layout.prop(context.scene.panel_input, "auto_clean")  # type: ignore
         self.layout.prop(context.scene.panel_input, "apply_transform")  # type: ignore
 
+        if len(context.scene.processing): # type: ignore
+            self.layout.label(text=localize(context.scene.processing)) # type: ignore
+        
         row = self.layout.row()
         row.operator(OBJECT_OT_apply_cloth.bl_idname, icon="MOD_CLOTH")
         row.operator(OBJECT_OT_unapply_cloth.bl_idname, icon="MOD_CLOTH")
@@ -37,6 +41,52 @@ class MY_PT_ui(bpy.types.Panel):
         row = self.layout.row()
         row.operator(OBJECT_OT_remove_all_vertex_groups.bl_idname, icon="TRASH")
         row.operator(OBJECT_OT_remove_all_ununsed_vertex_groups.bl_idname, icon="BRUSH_DATA")
+
+def update_progress_message(message: str|None):
+    bpy.context.scene.processing = message or "" # type: ignore
+    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+
+def apply_cloth_handler(context):
+    try:
+        target_objs = applicable_meshes(bpy.context.selected_objects[1:])
+        if len(target_objs) < 1:
+            print(localize("All selected objects are not applicable."))
+            return None
+        scene = bpy.context.scene
+        smooth_factor = scene.panel_input.smooth # type: ignore
+        cleanup = scene.panel_input.auto_clean # type: ignore
+        apply_transform = scene.panel_input.apply_transform # type: ignore
+
+        options = ClothApplyOptions(smooth_factor, cleanup, apply_transform, update_progress_message)
+
+        if not apply_cloth(bpy.context.active_object, target_objs, options):
+            print("Error")
+    finally:
+        # update panel
+        update_progress_message(None)
+
+
+class OBJECT_OT_apply_cloth(bpy.types.Operator):
+    """Apply weight to all selected objects. 
+Last selected mesh will be the source of weight"""
+    bl_idname = "mesh.apply_cloth"
+    bl_label = localize("Dress Up")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        if context.active_object is None: return False
+        if len(bpy.context.selected_objects) < 2: return False
+        if find_armature(bpy.context.active_object) is None: return False
+        return True
+
+    def execute(self, context): 
+        update_progress_message(localize("Dressing up..."))
+        
+        bpy.app.timers.register(lambda: apply_cloth_handler(bpy.context), first_interval=0.001)
+
+        return {'PASS_THROUGH'}
+
 
 class OBJECT_OT_unapply_cloth(bpy.types.Operator):
     """Undress all selected objects. Do not select body mesh"""
@@ -59,37 +109,6 @@ class OBJECT_OT_unapply_cloth(bpy.types.Operator):
             unapply_cloth(obj)
 
         return {'FINISHED'}
-
-class OBJECT_OT_apply_cloth(bpy.types.Operator):
-    """Apply weight to all selected objects. 
-Last selected mesh will be the source of weight"""
-    bl_idname = "mesh.apply_cloth"
-    bl_label = localize("Dress Up")
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        if context.active_object is None: return False
-        if len(bpy.context.selected_objects) < 2: return False
-        if find_armature(bpy.context.active_object) is None: return False
-        return True
-
-    def execute(self, context): 
-        target_objs = applicable_meshes(bpy.context.selected_objects[1:])
-        if len(target_objs) < 1:
-            self.report({'ERROR'}, localize("All selected objects are not applicable."))
-            return {'CANCELLED'}
-        scene = bpy.context.scene
-        smooth_factor = scene.panel_input.smooth # type: ignore
-        cleanup = scene.panel_input.auto_clean # type: ignore
-        apply_transform = scene.panel_input.apply_transform # type: ignore
-
-        options = ClothApplyOptions(smooth_factor, cleanup, apply_transform)
-
-        if apply_cloth(bpy.context.active_object, target_objs, options):
-            return {'FINISHED'}
-        else:
-            return {'CANCELLED'}
 
 class OBJECT_OT_remove_all_vertex_groups(bpy.types.Operator):
     """Remove all vertex groups from selected objects"""
@@ -148,6 +167,8 @@ class PanelInputsProps(bpy.types.PropertyGroup):
 
 def register():
     bpy.types.Scene.panel_input = bpy.props.PointerProperty(type=PanelInputsProps) # type: ignore
+    bpy.types.Scene.processing = bpy.props.StringProperty(default="") # type: ignore
 
 def unregister():
     del bpy.types.Scene.panel_input # type: ignore
+    del bpy.types.Scene.processing # type: ignore

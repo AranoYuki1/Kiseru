@@ -1,16 +1,14 @@
-from typing import Sequence
+from typing import Sequence, Callable
 from dataclasses import dataclass
 
 import bpy
+import time
 
 from .VertexCleaner import cleanup_unused_vertex_groups, cleanup_all_vertex
 
-def unapply_cloth(obj: bpy.types.Object):
+def unapply_cloth(obj):
     # remove armature modifier
-    for modifier in obj.modifiers:
-        if modifier.type == "ARMATURE":
-            obj.modifiers.remove(modifier)
-
+    remove_all_armature_modifier(obj)
     cleanup_all_vertex([obj])
 
     obj.parent = None # type: ignore
@@ -26,28 +24,6 @@ def smooth_weight(obj: bpy.types.Object, factor: float):
 
     bpy.ops.object.mode_set(mode='OBJECT')
 
-def transfer_weights(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Object]):
-    # Select the source object
-    bpy.ops.object.select_all(action='DESELECT')
-    source_obj.select_set(True)
-    bpy.context.view_layer.objects.active = source_obj
-
-    for target_obj in target_objs:
-        target_obj.select_set(True)
-
-    # Transfer weights
-    bpy.ops.object.data_transfer(
-        data_type='VGROUP_WEIGHTS',
-        use_create=True,
-        layers_select_src="ALL",
-        layers_select_dst='NAME',
-        vert_mapping="POLYINTERP_NEAREST",
-        mix_mode="REPLACE"
-    )
-
-    # Deselect the target objects
-    for target_obj in target_objs:
-        target_obj.select_set(False)
 
 def apply_transforms(obj: bpy.types.Object):
     matrix = obj.matrix_world
@@ -59,6 +35,11 @@ def apply_transforms(obj: bpy.types.Object):
         [0 ,0, 1, 0],
         [0, 0, 0, 1]
     ]
+
+def remove_all_armature_modifier(obj: bpy.types.Object):
+    for modifier in obj.modifiers:
+        if modifier.type == "ARMATURE":
+            obj.modifiers.remove(modifier)
 
 def make_armature_parent(objs: list[bpy.types.Object], armature: bpy.types.Object):
     bpy.ops.object.select_all(action='DESELECT')
@@ -88,6 +69,33 @@ class ClothApplyOptions:
     smooth: float
     clean: bool
     apply_transform: bool
+    message_updator: Callable[[str], None]
+
+def transfer_weights(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Object], options: ClothApplyOptions):
+    # Select the source object
+    bpy.ops.object.select_all(action='DESELECT')
+    source_obj.select_set(True)
+    bpy.context.view_layer.objects.active = source_obj
+
+    for target_obj in target_objs:
+        target_obj.select_set(True)
+
+    options.message_updator("Transfering weights...")
+
+    # Transfer weights
+    bpy.ops.object.data_transfer(
+        data_type='VGROUP_WEIGHTS',
+        use_create=True,
+        layers_select_src="ALL",
+        layers_select_dst='NAME',
+        vert_mapping="POLYINTERP_NEAREST",
+        mix_mode="REPLACE"
+    )
+
+    # Deselect the target objects
+    for target_obj in target_objs:
+        target_obj.select_set(False)
+
 
 def apply_cloth(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Object], options: ClothApplyOptions) -> bool:
     # filter target objects with mesh type
@@ -97,23 +105,34 @@ def apply_cloth(source_obj: bpy.types.Object, target_objs: Sequence[bpy.types.Ob
     armature = find_armature(source_obj)
     if armature is None or armature.type != "ARMATURE": return False
 
+    # remove all armature modifier
+    if options.clean:
+        for i, target_mesh in enumerate(target_objs):
+            remove_all_armature_modifier(target_mesh)
+            options.message_updator(f"Remove all armature modifier from '{target_mesh.name}' ({i+1} / {len(target_objs)})")
+
     # apply transform
     if options.apply_transform:
-        for target_obj in target_objs:
+        for i, target_obj in enumerate(target_objs):
             apply_transforms(target_obj)
+            options.message_updator(f"Apply transform to '{target_obj.name}' ({i+1} / {len(target_objs)})")
 
     # make every target objects to armature children
     make_armature_parent(target_objs, armature)
     
     # transfar weight from source to target
-    transfer_weights(source_obj, target_objs)
+    transfer_weights(source_obj, target_objs, options)
 
-    for target_mesh in target_objs:
-        smooth_weight(target_mesh, options.smooth)
+    if options.smooth > 0.01:
+        for i, target_mesh in enumerate(target_objs):
+            # smooth weight
+            options.message_updator(f"Smooth weight of '{target_mesh.name}' ({i+1} / {len(target_objs)})")
+            smooth_weight(target_mesh, options.smooth)
 
     # cleanup unused vertex groups
     if options.clean:
-        for target_mesh in target_objs:
+        for i, target_mesh in enumerate(target_objs):
+            options.message_updator(f"Cleanup unused vertex groups of '{target_mesh.name}' ({i+1} / {len(target_objs)})")
             cleanup_unused_vertex_groups(target_mesh)
 
     # reselect target objects

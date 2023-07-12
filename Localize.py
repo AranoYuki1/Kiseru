@@ -10,6 +10,7 @@ translation_dict = {
         "Auto Clean Vertex Groups": "Auto Clean Vertex Groups",
         "Apply Transform": "Apply Transform",
         "All selected objects are not applicable.": "All selected objects are not applicable. If you want to dress up again, please undress first.",
+        "Dressing up...": "Dressing up..."
     },
     "ja_JP": {
         "Dress Up": "着せる",
@@ -21,6 +22,7 @@ translation_dict = {
         "Auto Clean Vertex Groups": "必要な頂点グループのみを残す",
         "Apply Transform": "衣装のトランスフォームを適応",
         "All selected objects are not applicable.": "選択されたすべてのオブジェクトはすでに着せられています。もし、再度着せ直したい場合は、一度脱がせてください。",
+        "Dressing up...": "衣装を着せています..."
     }
 }
 
